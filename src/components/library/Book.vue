@@ -6,16 +6,26 @@
         >
             <div
                 class="relative aspect-[3/4] overflow-hidden border border-border transition-colors group-hover:border-foreground/30"
-                :style="{ background: `linear-gradient(165deg, ${covers[project.cover].from}, ${covers[project.cover].to})` }"
+                :style="{ background: `linear-gradient(165deg, ${covers[project.coverTheme].from}, ${covers[project.coverTheme].to})` }"
             >
+                <img
+                    v-if="coverUrl"
+                    :src="coverUrl"
+                    alt=""
+                    class="absolute inset-0 size-full object-cover"
+                />
                 <div class="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(255,255,255,0.16),transparent_42%)]" />
                 <p class="absolute top-3 left-3 text-[10px] font-medium tracking-[0.16em] text-white/65 uppercase">
                     {{ projectStatusLabel[projectStatus(project)] }}
                 </p>
-                <p class="font-manuscript absolute right-4 bottom-12 text-6xl leading-none text-white/90">
+                <p
+                    v-if="!coverUrl"
+                    class="font-manuscript absolute right-4 bottom-12 text-6xl leading-none text-white/90"
+                >
                     {{ initial(project.title) }}
                 </p>
                 <svg
+                    v-if="!coverUrl"
                     class="absolute right-3 bottom-3 h-6 w-16 text-white/70"
                     :viewBox="`0 0 16 20`"
                     preserveAspectRatio="none"
@@ -44,6 +54,7 @@
                 · {{ edited(project.updatedAt) }}
             </p>
         </router-link>
+
         <DropdownMenu>
             <DropdownMenuTrigger as-child>
                 <Button
@@ -57,6 +68,9 @@
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+                <DropdownMenuItem @click="openFileUpload">
+                    Update Cover
+                </DropdownMenuItem>
                 <DropdownMenuItem @click="router.push(`/project/${project.slug}`)">
                     Open
                 </DropdownMenuItem>
@@ -108,10 +122,28 @@ import { useRouter } from 'vue-router';
 import { covers } from '@/lib/covers';
 import { toast } from 'vue-sonner';
 import { useStore } from 'vuex';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import dayjs from 'dayjs';
 
 const router = useRouter();
 const store = useStore();
+const coverBlob = ref<Blob | null>(null);
+const coverUrl = ref('');
+
+onMounted(async () => {
+    if (props.project.coverImage) {
+        const root = await navigator.storage.getDirectory();
+        const projectsDir = await root.getDirectoryHandle('audiobook_projects', { create: true });
+        const projectDir = await projectsDir.getDirectoryHandle(props.project.id, { create: true });
+        const fileHandle = await projectDir.getFileHandle(props.project.coverImage, { create: true });
+        const file = await fileHandle.getFile();
+        coverUrl.value = URL.createObjectURL(file);
+    }
+});
+
+onBeforeUnmount(() => {
+    if (coverUrl.value) URL.revokeObjectURL(coverUrl.value);
+});
 
 const props = defineProps<{
     project: Project;
@@ -139,5 +171,36 @@ function removeProject(project: Project) {
     toast('Project Removed', {
         description: project.title,
     });
+}
+
+function openFileUpload() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    input.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        input.remove();
+        if (!file) return;
+        const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+        coverBlob.value = blob;
+        if (coverUrl.value) URL.revokeObjectURL(coverUrl.value);
+        coverUrl.value = URL.createObjectURL(blob);
+
+        const fileName = file.name.replace(/ /g, '-');
+
+        store.dispatch('updateProjectCover', {
+            projectID: props.project.id,
+            fileName,
+            blob: blob,
+        });
+
+        toast('Cover Updated', {
+            description: file.name,
+        });
+    }, { once: true });
+    input.addEventListener('cancel', () => input.remove(), { once: true });
+    document.body.appendChild(input);
+    input.click();
 }
 </script>

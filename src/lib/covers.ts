@@ -1,6 +1,6 @@
-import type { CoverId } from '@/lib/types';
+import type { CoverTheme } from '@/lib/types';
 
-export const covers: Record<CoverId, { from: string; to: string }> = {
+export const covers: Record<CoverTheme, { from: string; to: string; }> = {
     ink: { from: '#171c24', to: '#3a4960' },
     wine: { from: '#241416', to: '#6a3038' },
     moss: { from: '#161e1b', to: '#3d5246' },

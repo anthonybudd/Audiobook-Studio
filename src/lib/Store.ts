@@ -1,5 +1,5 @@
 import { projects as seedProjects, voices } from '@/lib/appData';
-import type { Chapter, CoverId, Project, Voice } from '@/lib/types';
+import type { Chapter, CoverTheme, Project, Voice } from '@/lib/types';
 import { createStore, type Store, type MutationPayload, type Context } from 'vuex';
 
 const PROJECTS_KEY = 'audiobook.projects';
@@ -9,7 +9,7 @@ export interface State {
     voices: Voice[];
 }
 
-const coverCycle: CoverId[] = ['ink', 'wine', 'moss', 'sand', 'dusk', 'copper'];
+const coverCycle: CoverTheme[] = ['ink', 'wine', 'moss', 'sand', 'dusk', 'copper'];
 
 function touch(project: Project) {
     project.updatedAt = new Date().toISOString();
@@ -50,9 +50,13 @@ function isStoredProject(value: unknown): value is Project {
 function loadProjects(): Project[] {
     try {
         const raw = localStorage.getItem(PROJECTS_KEY);
-        if (!raw) return seedProjects;
+        if (!raw) {
+            return seedProjects;
+        }
         const parsed: unknown = JSON.parse(raw);
-        if (!Array.isArray(parsed) || !parsed.every(isStoredProject)) return seedProjects;
+        if (!Array.isArray(parsed) || !parsed.every(isStoredProject)) {
+            return seedProjects;
+        }
         return parsed;
     } catch {
         return seedProjects;
@@ -61,6 +65,7 @@ function loadProjects(): Project[] {
 
 function persistProjects(store: Store<State>) {
     store.subscribe((mutation: MutationPayload, state: State) => {
+        console.log('Persisting projects');
         try {
             localStorage.setItem(PROJECTS_KEY, JSON.stringify(state.projects));
         } catch {
@@ -97,6 +102,12 @@ const store = createStore<State>({
             const project = findProject(state, payload.projectID);
             if (!project) return;
             project.title = payload.title;
+            touch(project);
+        },
+        updateProjectCoverImage(state: State, payload: { projectID: string; fileName: string; }) {
+            const project = findProject(state, payload.projectID);
+            if (!project) return;
+            project.coverImage = payload.fileName;
             touch(project);
         },
         updateProjectAuthor(state: State, payload: { projectID: string; author: string; }) {
@@ -200,7 +211,7 @@ const store = createStore<State>({
                 title: payload.title.trim(),
                 author: payload.author.trim() || 'Unknown author',
                 voiceID: payload.voiceID,
-                cover: coverCycle[context.state.projects.length % coverCycle.length] ?? 'ink',
+                coverTheme: coverCycle[context.state.projects.length % coverCycle.length] ?? 'ink',
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 activechapterID: '',
@@ -209,6 +220,29 @@ const store = createStore<State>({
             context.commit('addProject', project);
             return project;
         },
+
+        async updateProjectCover(context: Context, payload: { projectID: string; fileName: string; blob: Blob; }) {
+            const project = findProject(context.state, payload.projectID);
+            if (!project) return;
+            const fileName = payload.fileName.replace(/ /g, '-');
+
+            try {
+                if ('storage' in navigator && 'getDirectory' in (navigator.storage as any)) {
+                    // @ts-ignore: OPFS types are not yet in TS
+                    const root = await (navigator.storage as any).getDirectory();
+                    const projectsDir = await root.getDirectoryHandle('audiobook_projects', { create: true });
+                    const projectDir = await projectsDir.getDirectoryHandle(payload.projectID, { create: true });
+                    const fileHandle = await projectDir.getFileHandle(fileName, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(payload.blob);
+                    await writable.close();
+                    context.commit('updateProjectCoverImage', { projectID: payload.projectID, fileName: fileName });
+                }
+            } catch (e) {
+                console.warn('OPFS save failed', e);
+            }
+        },
+
         async addChapter(context: Context, payload: { projectID: string; title: string; text: string; voiceID: string; }) {
             const project = findProject(context.state, payload.projectID);
             if (!project) return;

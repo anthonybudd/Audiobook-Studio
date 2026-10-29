@@ -1,4 +1,4 @@
-export type CoverId = 'ink' | 'wine' | 'moss' | 'sand' | 'dusk' | 'copper';
+export type CoverTheme = 'ink' | 'wine' | 'moss' | 'sand' | 'dusk' | 'copper';
 
 export type ChapterState = 'empty' | 'draft' | 'stale' | 'ready';
 
@@ -30,7 +30,8 @@ export interface Project {
     title: string;
     author: string;
     voiceID: string;
-    cover: CoverId;
+    coverTheme: CoverTheme;
+    coverImage?: string;
     createdAt: string;
     updatedAt: string;
     activechapterID: string;
